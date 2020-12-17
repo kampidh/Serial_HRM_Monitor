@@ -27,7 +27,7 @@ Data from serial input is displayed as fast as possible.
 - **Streaming feature (OBS)**
 
 Enable "Text output stream" to send the BPM and SpO2 data to a text file that can be used in OBS. Both raw and rounded format is available.
-PPG Graph color is also customizable (right click the grraph to see detailed config). Suit it for your stream! Use windows capture feature from OBS and adjust the crop correspondingly. *(Do not minimize the window when capturing the PPG Graph)*
+PPG Graph color is also customizable (right click the graph to see detailed config). Suit it for your stream! Use windows capture feature from OBS and adjust the crop correspondingly. *(Do not minimize the window when capturing the PPG Graph)*
 
 
 - **Trend graph & logging**

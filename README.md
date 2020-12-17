@@ -32,7 +32,7 @@ PPG Graph color is also customizable. Suit it for your stream! Use windows captu
 
 - **Trend graph & logging**
 
-See the min and max value on a 5 minutes span graph and log the data in .csv format to process it further.
+See the min and max value on a 5 minutes span graph on the application and the ability to log the data in .csv format to process it further.
 
 ![CSV Export](csvexport.png)
 

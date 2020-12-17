@@ -826,7 +826,7 @@ namespace Serial_HRM_Monitor
 
         private void linkLabel5_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
         {
-            System.Diagnostics.Process.Start("https://github.com/kampidh"); //project page link
+            System.Diagnostics.Process.Start("https://github.com/kampidh/Serial_HRM_Monitor"); //project page link
         }
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)

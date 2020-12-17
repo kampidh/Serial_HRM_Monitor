@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.28307.489
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Serial_HRM_Monitor", "Serial_HRM_Monitor\Serial_HRM_Monitor.csproj", "{A1268EC7-D97D-4D97-896F-520EB8D1A2FB}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A1268EC7-D97D-4D97-896F-520EB8D1A2FB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A1268EC7-D97D-4D97-896F-520EB8D1A2FB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A1268EC7-D97D-4D97-896F-520EB8D1A2FB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A1268EC7-D97D-4D97-896F-520EB8D1A2FB}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {3C406A76-9CEC-4BFA-B555-6C02B1B64B8D}
+	EndGlobalSection
+EndGlobal

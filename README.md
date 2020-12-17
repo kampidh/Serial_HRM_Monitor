@@ -23,17 +23,23 @@ For educational and recreational purpose only. NOT INTENDED FOR MEDICAL USE.*
 
 Data from serial input is displayed as fast as possible.
 
+
 - **Streaming feature (OBS)**
 
 Enable "Text output stream" to send the BPM and SpO2 data to a text file that can be used in OBS. Both raw and rounded format is available.
 PPG Graph color is also customizable. Suit it for your stream! Use windows capture feature from OBS and adjust the crop correspondingly. *(Do not minimize the window when capturing the PPG Graph)*
 
+
 - **Trend graph & logging**
 
 See the min and max value on a 5 minutes span graph and log the data in .csv format to process it further.
 
+![CSV Export](csvexport.png)
+
+
 - **Save on exit**
 
 Stream file path (txt) and PPG Graph config are saved on exit.
+
 
 ### LICENSED under Apache License 2.0

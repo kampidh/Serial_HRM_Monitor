@@ -528,10 +528,14 @@ namespace Serial_HRM_Monitor
             {
                 //made a ring buffer so that it only writes to file
                 //once every 5 seconds / 5 sanples
-                string d = DateTime.Now.ToString("s");
-                string s = string.Format("{0},{1:N2},{2:N2}", d, dBPM, dSPO);
 
-                logBuffer[logIndex] = s;
+                //string d = DateTime.Now.ToString("s");
+                //string s = string.Format("{0},{1:N2},{2:N2}", d, dBPM, dSPO);
+
+                //use string interpolation instead
+                string a = $"{DateTime.Now:s},{dBPM:N2},{dSPO:N2}";
+
+                logBuffer[logIndex] = a;
                 logIndex++;
 
                 if (logIndex == 5)

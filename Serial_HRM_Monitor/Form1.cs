@@ -7,21 +7,25 @@ using System.Linq;
 using System.Management;
 using System.Windows.Forms;
 using System.IO;
+using System.Globalization;
 
 namespace Serial_HRM_Monitor
 {
     public partial class Form1 : Form
     {
         private List<PortInfo> _ports = new List<PortInfo>();
-        private string bufferData;
-        private string testData;
-        private string trimmedData;
-        private string[] parsedData = new string[4];
+        private string bufferData = "0";
+        private string testData = "0";
+        private string trimmedData = "0";
+        private string[] parsedData = new string[4] { "00.00", "00.00", "00.00", "00.00" };
 
-        private double dBPM;
-        private double dIR;
-        private double dRED;
-        private double dSPO;
+        private double dBPM = 0;
+        private double dIR = 0;
+        private double dRED = 0;
+        private double dSPO = 0;
+
+        private CultureInfo culture = CultureInfo.InvariantCulture;
+
         StreamWriter SlowLog;
 
         private string[] logBuffer = new string[5];
@@ -57,6 +61,33 @@ namespace Serial_HRM_Monitor
             lineColorPick.BackColor = Properties.Settings.Default.graphLineCol;
             chart1.Series[0].BorderWidth = Properties.Settings.Default.graphLineThickness;
 
+            blipheart.Parent = chart1;
+            blipheart.BackColor = System.Drawing.Color.Transparent;
+
+            //blipheart.BackColor = Properties.Settings.Default.graphBGCol;
+            blipheart.ForeColor = Properties.Settings.Default.graphLineCol;
+
+            NameVersionLabel.Text = String.Format("{0} v{1}",Application.ProductName,Application.ProductVersion);
+
+            switch (chart1.Series[0].BorderWidth)
+            {
+                case 1:
+                    toolStripMenuThick1.Checked = true;
+                    break;
+                case 2:
+                    toolStripMenuThick2.Checked = true;
+                    break;
+                case 3:
+                    toolStripMenuThick3.Checked = true;
+                    break;
+                case 4:
+                    toolStripMenuThick4.Checked = true;
+                    break;
+                case 5:
+                    toolStripMenuThick5.Checked = true;
+                    break;
+            }
+
             chart1.BackColor = bgColorPick.BackColor;
             chart1.ChartAreas[0].BackColor = bgColorPick.BackColor;
             chart1.ChartAreas[0].BackSecondaryColor = bgColorPick.BackColor;
@@ -67,9 +98,12 @@ namespace Serial_HRM_Monitor
             chart1.ChartAreas[0].AxisY.LineColor = gridColorPick.BackColor;
             chart1.ChartAreas[0].AxisY.MajorTickMark.LineColor = gridColorPick.BackColor;
             chart1.Series[0].Color = lineColorPick.BackColor;
+            chart1.Series[1].Color = lineColorPick.BackColor;
 
             BPMFileText.Text = Properties.Settings.Default.BPMFile;
             SPO2FileText.Text = Properties.Settings.Default.SPOFile;
+
+            heartIconToolStripMenuItem.Checked = Properties.Settings.Default.HeartIcon;
 
             mySerial.DataReceived += rx_data_event;
             backgroundDataWorker.DoWork += new DoWorkEventHandler(TaskBackground);
@@ -150,33 +184,10 @@ namespace Serial_HRM_Monitor
                     {
                         if (!mySerial.IsOpen)
                         {
-                            if (Serial_port_config())
-                            {
-                                try
-                                {
-                                    mySerial.Open();
-                                }
-                                catch
-                                {
-                                    //throw new Exception("Can't open " + mySerial.PortName + " port, it might be used in another program");
-                                    if (MessageBox.Show("Can't open " + mySerial.PortName + " port, it might be used in another program", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning) == DialogResult.OK)
-                                    {
-                                        refreshPort();
-                                        return;
-                                    }
-                                }
-
-                                UserControl_state(true);
-                            }
+                            serial_startup();
 
                             SlowLog = new StreamWriter(LogFileText.Text);
                             SlowLog.WriteLine("Time,BPM,SpO2");
-
-                            chart2.Series[0].Points.Clear();
-                            chart3.Series[0].Points.Clear();
-
-                            timer1.Enabled = true;
-                            timer2.Enabled = true;
                         }
                     }
                     else
@@ -188,33 +199,10 @@ namespace Serial_HRM_Monitor
                 {
                     if (!mySerial.IsOpen)
                     {
-                        if (Serial_port_config())
-                        {
-                            try
-                            {
-                                mySerial.Open();
-                            }
-                            catch
-                            {
-                                //throw new Exception("Can't open " + mySerial.PortName + " port, it might be used in another program");
-                                if (MessageBox.Show("Can't open " + mySerial.PortName + " port, it might be used in another program", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning) == DialogResult.OK)
-                                {
-                                    refreshPort();
-                                    return;
-                                }
-                            }
-
-                            UserControl_state(true);
-                        }
+                        serial_startup();
 
                         SlowLog = new StreamWriter(LogFileText.Text);
                         SlowLog.WriteLine("Time,BPM,SpO2");
-
-                        chart2.Series[0].Points.Clear();
-                        chart3.Series[0].Points.Clear();
-
-                        timer1.Enabled = true;
-                        timer2.Enabled = true;
                     }
                 }
             }
@@ -237,30 +225,7 @@ namespace Serial_HRM_Monitor
 
                 if (!mySerial.IsOpen)
                 {
-                    if (Serial_port_config())
-                    {
-                        try
-                        {
-                            mySerial.Open();
-                        }
-                        catch
-                        {
-                            //throw new Exception("Can't open " + mySerial.PortName + " port, it might be used in another program");
-                            if (MessageBox.Show("Can't open " + mySerial.PortName + " port, it might be used in another program", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning) == DialogResult.OK)
-                            {
-                                refreshPort();
-                                return;
-                            }
-                        }
-
-                        UserControl_state(true);
-                    }
-
-                    chart2.Series[0].Points.Clear();
-                    chart3.Series[0].Points.Clear();
-
-                    timer1.Enabled = true;
-                    timer2.Enabled = true;
+                    serial_startup();
                 }
             }
 
@@ -269,6 +234,7 @@ namespace Serial_HRM_Monitor
             {
                 try
                 {
+                    mySerial.Write("2");
                     mySerial.Close();
                     mySerial.DiscardInBuffer();
                     mySerial.DiscardOutBuffer();
@@ -281,6 +247,35 @@ namespace Serial_HRM_Monitor
                 timer1.Enabled = false;
                 timer2.Enabled = false;
             }
+        }
+
+        private void serial_startup()
+        {
+            if (Serial_port_config())
+            {
+                try
+                {
+                    mySerial.Open();
+                    mySerial.Write("1");
+                }
+                catch
+                {
+                    //throw new Exception("Can't open " + mySerial.PortName + " port, it might be used in another program");
+                    if (MessageBox.Show("Can't open " + mySerial.PortName + " port, it might be used in another program", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning) == DialogResult.OK)
+                    {
+                        refreshPort();
+                        return;
+                    }
+                }
+
+                UserControl_state(true);
+            }
+
+            chart2.Series[0].Points.Clear();
+            chart3.Series[0].Points.Clear();
+
+            timer1.Enabled = true;
+            timer2.Enabled = true;
         }
 
         private void rx_data_event(object sender, SerialDataReceivedEventArgs e)
@@ -310,8 +305,13 @@ namespace Serial_HRM_Monitor
                         if (chart1.Series[0].Points.Count > 200)
                         {
                             chart1.Series[0].Points.RemoveAt(0);
+                            chart1.Series[1].Points.RemoveAt(0);
                         }
-                        chart1.Series[0].Points.Add(dIR);
+                        if (dIR != 0)
+                        {
+                            chart1.Series[0].Points.Add(dIR);
+                            chart1.Series[1].Points.Add(dRED);
+                        }
                     }));
                 }
                 catch { throw new Exception("Can't read form " + mySerial.PortName + " port it might be opened in another program"); }
@@ -352,19 +352,27 @@ namespace Serial_HRM_Monitor
                 }
 
                 //Store the trimmed data into the corresponding variables.
+                double blipBPM = dBPM;
 
                 try
                 {
-                    dIR = Convert.ToDouble(parsedData[1]);
-                    dRED = Convert.ToDouble(parsedData[2]);
-                    dBPM = Convert.ToDouble(parsedData[0]);
-                    dSPO = Convert.ToDouble(parsedData[3]);
+                    dIR = Convert.ToDouble(parsedData[1], culture);
+                    dRED = Convert.ToDouble(parsedData[2], culture);
+                    dBPM = Convert.ToDouble(parsedData[0], culture);
+                    dSPO = Convert.ToDouble(parsedData[3], culture);
 
                     BPMtext.Text = parsedData[0];
                     SPO2text.Text = parsedData[3] + "%";
                     IRtext.Text = parsedData[1];
                     REDtext.Text = parsedData[2];
                 } catch { }
+
+                if (blipBPM != dBPM && heartIconToolStripMenuItem.Checked == true)
+                {
+                    timer3.Start();
+                    blipheart.Visible = true;
+                    //player.Play();
+                }
 
                 //On program debug
                 RawDataText.Text = bufferData;
@@ -434,6 +442,20 @@ namespace Serial_HRM_Monitor
             string bn = string.Format("{0:N0}", dBPM);
             string sn = string.Format("{0:N0}%", dSPO);
 
+            /*
+            if (dBPM < 100)
+            {
+                b = b.Insert(0, " ");
+                bn = bn.Insert(0, " ");
+            }
+
+            if (dSPO < 100)
+            {
+                s = s.Insert(0, " ");
+                sn = sn.Insert(0, " ");
+            }
+            */
+
             if (EnableTextFile.Checked)
             {
                 try
@@ -495,7 +517,7 @@ namespace Serial_HRM_Monitor
             {
                 chart2.Series[0].Points.RemoveAt(0);
             }
-            chart2.Series[0].Points.Add(dBPM);
+            if(dBPM != 0) chart2.Series[0].Points.Add(dBPM);
 
             chart3.ResetAutoValues();
             chart3.ChartAreas[0].RecalculateAxesScale();
@@ -504,7 +526,7 @@ namespace Serial_HRM_Monitor
             {
                 chart3.Series[0].Points.RemoveAt(0);
             }
-            chart3.Series[0].Points.Add(dSPO);
+            if (dSPO != 0) chart3.Series[0].Points.Add(dSPO);
 
             if (chart2.Series[0].Points.Count > 0)
             {
@@ -524,7 +546,7 @@ namespace Serial_HRM_Monitor
             spoMin.Text = "Min: " + minSPOval.ToString() + "%";
             spoMax.Text = "Max: " + maxSPOval.ToString() + "%";
 
-            if (LogIsEnabled.Checked)
+            if (LogIsEnabled.Checked && dBPM != 0 && dSPO != 0)
             {
                 //made a ring buffer so that it only writes to file
                 //once every 5 seconds / 5 sanples
@@ -547,6 +569,19 @@ namespace Serial_HRM_Monitor
                     }
                     SlowLog.Flush();
                 }
+            }
+        }
+
+        private void timer3_Tick(object sender, EventArgs e)
+        {
+            if (blipheart.Visible == true)
+            {
+                blipheart.Visible = false;
+                timer3.Stop();
+            }
+            else
+            {
+                //blipheart.Visible = true;
             }
         }
 
@@ -619,6 +654,8 @@ namespace Serial_HRM_Monitor
             chart1.ChartAreas[0].AxisY.LineColor = gridColorPick.BackColor;
             chart1.ChartAreas[0].AxisY.MajorTickMark.LineColor = gridColorPick.BackColor;
             chart1.Series[0].Color = lineColorPick.BackColor;
+            chart1.Series[1].Color = lineColorPick.BackColor;
+            blipheart.ForeColor = lineColorPick.BackColor;
             Properties.Settings.Default.graphBGCol = bgColorPick.BackColor;
             Properties.Settings.Default.graphGridCol = gridColorPick.BackColor;
             Properties.Settings.Default.graphLineCol = lineColorPick.BackColor;
@@ -660,7 +697,9 @@ namespace Serial_HRM_Monitor
             if (colorDialog1.ShowDialog() == DialogResult.OK)
             {
                 chart1.Series[0].Color = colorDialog1.Color;
+                chart1.Series[1].Color = colorDialog1.Color;
                 lineColorPick.BackColor = colorDialog1.Color;
+                blipheart.ForeColor = colorDialog1.Color;
                 Properties.Settings.Default.graphLineCol = colorDialog1.Color;
             }
         }
@@ -840,5 +879,19 @@ namespace Serial_HRM_Monitor
             if (LogIsEnabled.Checked) { SlowLog.Dispose(); }
             Properties.Settings.Default.Save();
         }
+
+        private void red2ndGraphToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            if (red2ndGraphToolStripMenuItem.Checked)
+            {
+                red2ndGraphToolStripMenuItem.Checked = false;
+                chart1.Series[1].Enabled = false;
+            } else
+            {
+                red2ndGraphToolStripMenuItem.Checked = true;
+                chart1.Series[1].Enabled = true;
+            }
+        }
+
     }
 }

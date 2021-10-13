@@ -83,10 +83,11 @@
   - Removing SpO2 reference lines
   - IR and Red values are sent with 3 decimal points instead
   - Adding START "<" and END ">" markers to serial data stream for better data parsing
+  - Ading sleep function when disconnected from the app
 
   For the original version, please refer to the original arduino code:
   https://github.com/coniferconifer/ESP32_MAX30102_simple-SpO2_plotter/tree/master/ESP32_MAX30102_simple-SpO2_plotter-BLE
- */
+*/
 
 #include <Wire.h>
 #include "MAX30105.h" //sparkfun MAX3010X library
@@ -172,6 +173,11 @@ int Num = SUM_CYCLE ; //calculate SpO2 by this sampling interval
 double eSpO2 = 95.0;//initial value of estimated SpO2
 double fSpO2 = 0.7; //filter factor for estimated SpO2
 double fRate = 0.95; //low pass filter for IR/red LED value to eliminate AC component
+
+bool isShutdown = true;
+bool flagShutdown = true;
+byte choice = 2;
+uint32_t lastMillis = 0;
 
 #define TIMETOBOOT 3000 // wait for this time(msec) to output SpO2
 #define SCALE 88.0 //adjust to display heart beat and SpO2 in Arduino serial plotter at the same time
@@ -346,10 +352,10 @@ void noTone()
 #define FINGER_ON 50000 // if ir signal is lower than this , it indicates your finger is not on the sensor
 #define LED_PERIOD 100 // light up LED for this period in msec when zero crossing is found for filtered IR signal
 #define MAX_BPS 180
-#define MIN_BPS 45
+#define MIN_BPS 30
 double HRM_estimator( double fir , double aveIr)
 {
-  static double fbpmrate = 0.95; // low pass filter coefficient for HRM in bpm
+  static double fbpmrate = 0.40; // low pass filter coefficient for HRM in bpm
   static uint32_t crosstime = 0; //falling edge , zero crossing time in msec
   static uint32_t crosstime_prev = 0;//previous falling edge , zero crossing time in msec
   static double bpm = 60.0;
@@ -374,6 +380,16 @@ double HRM_estimator( double fir , double aveIr)
         tone(BLIPSOUND - (100.0 - eSpO2) * 10.0); //when SpO2=80% BLIPSOUND drops 200Hz to indicate anormaly
       }
 #endif
+//#define BLIPDEBUG
+#ifdef BLIPDEBUG
+      if (aveIr > FINGER_ON) {
+        Serial.println("Blip!");
+        Serial.print("BPM: ");
+        Serial.println(bpm);
+        Serial.print("avg BPM: ");
+        Serial.println(ebpm);
+      }
+#endif
     } else {
       //Serial.println("faild to find falling edge");
     }
@@ -394,113 +410,139 @@ double HRM_estimator( double fir , double aveIr)
 unsigned int loopCnt = 0;
 void loop()
 {
-  uint32_t ir, red ;//raw data
-  double fred, fir; //floating point RED ana IR raw values
-  double SpO2 = 0; //raw SpO2 before low pass filtered
-  double Ebpm;//estimated Heart Rate (bpm)
+  while (Serial.available()) {
+    choice = Serial.parseInt();
+    while (Serial.available())Serial.read();
+    if (choice == 1) isShutdown = false;
+    if (choice == 2) isShutdown = true;
+    flagShutdown = true;
+  }
 
-  particleSensor.check(); //Check the sensor, read up to 3 samples
+  if(flagShutdown){
+    flagShutdown = false;
+    if (choice == 1) particleSensor.wakeUp();
+    if (choice == 2) particleSensor.shutDown();
+    lastMillis = millis();
+    delay(100);
+  }
 
-  while (particleSensor.available()) {//do we have new data
+  while (!isShutdown) {
+    uint32_t ir, red ;//raw data
+    double fred, fir; //floating point RED ana IR raw values
+    double SpO2 = 0; //raw SpO2 before low pass filtered
+    double Ebpm;//estimated Heart Rate (bpm)
+
+    particleSensor.check(); //Check the sensor, read up to 3 samples
+
+    while (particleSensor.available()) {//do we have new data
 
 #ifdef MAX30105
-    red = particleSensor.getFIFORed(); //Sparkfun's MAX30105
-    ir = particleSensor.getFIFOIR();  //Sparkfun's MAX30105
+      red = particleSensor.getFIFORed(); //Sparkfun's MAX30105
+      ir = particleSensor.getFIFOIR();  //Sparkfun's MAX30105
 #else
-    red = particleSensor.getFIFOIR(); //why getFOFOIR output Red data by MAX30102 on MH-ET LIVE breakout board
-    ir = particleSensor.getFIFORed(); //why getFIFORed output IR data by MAX30102 on MH-ET LIVE breakout board
+      red = particleSensor.getFIFOIR(); //why getFOFOIR output Red data by MAX30102 on MH-ET LIVE breakout board
+      ir = particleSensor.getFIFORed(); //why getFIFORed output IR data by MAX30102 on MH-ET LIVE breakout board
 #endif
-    i++; loopCnt++;
-    fred = (double)red;
-    fir = (double)ir;
-    aveRed = aveRed * fRate + (double)red * (1.0 - fRate);//average red level by low pass filter
-    aveIr = aveIr * fRate + (double)ir * (1.0 - fRate); //average IR level by low pass filter
-    sumRedRMS += (fred - aveRed) * (fred - aveRed); //square sum of alternate component of red level
-    sumIrRMS += (fir - aveIr) * (fir - aveIr);//square sum of alternate component of IR level
+      i++; loopCnt++;
+      fred = (double)red;
+      fir = (double)ir;
+      aveRed = aveRed * fRate + (double)red * (1.0 - fRate);//average red level by low pass filter
+      aveIr = aveIr * fRate + (double)ir * (1.0 - fRate); //average IR level by low pass filter
+      sumRedRMS += (fred - aveRed) * (fred - aveRed); //square sum of alternate component of red level
+      sumIrRMS += (fir - aveIr) * (fir - aveIr);//square sum of alternate component of IR level
 
-    Ebpm = HRM_estimator(fir, aveIr); //Ebpm is estimated BPM
+      Ebpm = HRM_estimator(fir, aveIr); //Ebpm is estimated BPM
 
-    if ((i % SAMPLING) == 0) {//slow down graph plotting speed for arduino Serial plotter by decimation
-      if ( millis() > TIMETOBOOT) {
-        float ir_forGraph = (2.0 * fir - aveIr) / aveIr * SCALE;
-        float red_forGraph = (2.0 * fred - aveRed) / aveRed * SCALE;
-        //trancation to avoid Serial plotter's autoscaling
-        if ( ir_forGraph > MAX_SPO2) ir_forGraph = MAX_SPO2;
-        if ( ir_forGraph < MIN_SPO2) ir_forGraph = MIN_SPO2;
-        if ( red_forGraph > MAX_SPO2 ) red_forGraph = MAX_SPO2;
-        if ( red_forGraph < MIN_SPO2 ) red_forGraph = MIN_SPO2;
-        //        Serial.print(red); Serial.print(","); Serial.print(ir);Serial.print(".");
-        if ( ir < FINGER_ON) eSpO2 = MINIMUM_SPO2; //indicator for finger detached
+      if ((i % SAMPLING) == 0) {//slow down graph plotting speed for arduino Serial plotter by decimation
+        if ( millis() > lastMillis + TIMETOBOOT) {
+          float ir_forGraph = (2.0 * fir - aveIr) / aveIr * SCALE;
+          float red_forGraph = (2.0 * fred - aveRed) / aveRed * SCALE;
+          //trancation to avoid Serial plotter's autoscaling
+          if ( ir_forGraph > MAX_SPO2) ir_forGraph = MAX_SPO2;
+          if ( ir_forGraph < MIN_SPO2) ir_forGraph = MIN_SPO2;
+          if ( red_forGraph > MAX_SPO2 ) red_forGraph = MAX_SPO2;
+          if ( red_forGraph < MIN_SPO2 ) red_forGraph = MIN_SPO2;
+          //        Serial.print(red); Serial.print(","); Serial.print(ir);Serial.print(".");
+          if ( ir < FINGER_ON) eSpO2 = MINIMUM_SPO2; //indicator for finger detached
 #define PRINT
 #ifdef PRINT
-        //Serial.print(bpm);// raw Heart Rate Monitor in bpm
-        //Serial.print(",");
-        Serial.print("<"); //Kampidh: start packet mark
-        Serial.print(Ebpm);// estimated Heart Rate Monitor in bpm
-        Serial.print(",");
-        //        Serial.print(Eir - aveIr);
-        //        Serial.print(",");
-        //Kampidh: Print IR and RED graph value with 3 decimal points instead
-        Serial.print(ir_forGraph, 3); // to display pulse wave at the same time with SpO2 data
-        Serial.print(","); Serial.print(red_forGraph, 3); // to display pulse wave at the same time with SpO2 data
-        Serial.print(",");
-        Serial.print(eSpO2); //low pass filtered SpO2
-        Serial.print(">"); //Kampidh: end packet mark without newline
+          //Serial.print(bpm);// raw Heart Rate Monitor in bpm
+          //Serial.print(",");
+          Serial.print("<"); //Kampidh: start packet mark
+          Serial.print(Ebpm);// estimated Heart Rate Monitor in bpm
+          Serial.print(",");
+          //        Serial.print(Eir - aveIr);
+          //        Serial.print(",");
+          //Kampidh: Print IR and RED graph value with 3 decimal points instead
+          Serial.print(ir_forGraph, 3); // to display pulse wave at the same time with SpO2 data
+          Serial.print(","); Serial.print(red_forGraph, 3); // to display pulse wave at the same time with SpO2 data
+          Serial.print(",");
+          Serial.print(eSpO2); //low pass filtered SpO2
+          Serial.print(">"); //Kampidh: end packet mark without newline
+          //Serial.println();
 
-        //Kampidh: Reference lines are disabled
-        /*
-        Serial.print(","); Serial.print(85.0); //reference SpO2 line
-        Serial.print(","); Serial.print(90.0); //warning SpO2 line
-        Serial.print(","); Serial.print(95.0); //safe SpO2 line
-        Serial.print(","); Serial.println(100.0); //max SpO2 line
-        */
+          //Kampidh: Reference lines are disabled
+          /*
+            Serial.print(","); Serial.print(85.0); //reference SpO2 line
+            Serial.print(","); Serial.print(90.0); //warning SpO2 line
+            Serial.print(","); Serial.print(95.0); //safe SpO2 line
+            Serial.print(","); Serial.println(100.0); //max SpO2 line
+          */
 
 #else
-        Serial.print(fred); Serial.print(",");
-        Serial.print(aveRed); Serial.println();
-        //    Serial.print(fir);Serial.print(",");
-        //   Serial.print(aveIr);Serial.println();
+          //Serial.print(fred); Serial.print(",");
+          //Serial.print(aveRed); Serial.println();
+          //    Serial.print(fir);Serial.print(",");
+          //   Serial.print(aveIr);Serial.println();
 #endif
 #ifdef TFT_DISPLAY
-        display(ir_forGraph, red_forGraph, Ebpm, eSpO2, loopCnt);
+          display(ir_forGraph, red_forGraph, Ebpm, eSpO2, loopCnt);
 #endif
+        }
       }
-    }
-    if ((i % Num) == 0) {
-      double R = (sqrt(sumRedRMS) / aveRed) / (sqrt(sumIrRMS) / aveIr);
-      // Serial.println(R);
-      //#define MAXIMREFDESIGN
+      if ((i % Num) == 0) {
+        double R = (sqrt(sumRedRMS) / aveRed) / (sqrt(sumIrRMS) / aveIr);
+        // Serial.println(R);
+        //#define MAXIMREFDESIGN
 #ifdef MAXIMREFDESIGN
-      //https://github.com/MaximIntegratedRefDesTeam/RD117_ARDUINO/blob/master/algorithm.h
-      //uch_spo2_table is approximated as  -45.060*ratioAverage* ratioAverage + 30.354 *ratioAverage + 94.845 ;
-      SpO2 = -45.060 * R * R + 30.354 * R + 94.845 ;
-      //      SpO2 = 104.0 - 17.0*R; //from MAXIM Integrated https://pdfserv.maximintegrated.com/en/an/AN6409.pdf
+        //https://github.com/MaximIntegratedRefDesTeam/RD117_ARDUINO/blob/master/algorithm.h
+        //uch_spo2_table is approximated as  -45.060*ratioAverage* ratioAverage + 30.354 *ratioAverage + 94.845 ;
+        SpO2 = -45.060 * R * R + 30.354 * R + 94.845 ;
+        //      SpO2 = 104.0 - 17.0*R; //from MAXIM Integrated https://pdfserv.maximintegrated.com/en/an/AN6409.pdf
 #else
 #define OFFSET 0.0
-      SpO2 = -23.3 * (R - 0.4) + 100 - OFFSET ; //http://ww1.microchip.com/downloads/jp/AppNotes/00001525B_JP.pdf
-      if (SpO2 > 100.0 ) SpO2 = 100.0;
+        SpO2 = -23.3 * (R - 0.4) + 100 - OFFSET ; //http://ww1.microchip.com/downloads/jp/AppNotes/00001525B_JP.pdf
+        if (SpO2 > 100.0 ) SpO2 = 100.0;
 #endif
-      eSpO2 = fSpO2 * eSpO2 + (1.0 - fSpO2) * SpO2;//low pass filter
-      //  Serial.print(SpO2);Serial.print(",");Serial.println(eSpO2);
+        eSpO2 = fSpO2 * eSpO2 + (1.0 - fSpO2) * SpO2;//low pass filter
+        //  Serial.print(SpO2);Serial.print(",");Serial.println(eSpO2);
 #ifdef BLE
 
-      if ( ir < FINGER_ON) {
-        eSpO2 = MINIMUM_SPO2; //indicator for finger detached
-      }
-      if ( digitalRead(SPO2_HRM_SWITCH) == LOW) {
-        SpO2_data[1] = (byte)Ebpm;
-      } else {
-        SpO2_data[1] = (byte)eSpO2;
-      }
-      SpO2_data[2] =  0x00;
-      SpO2MeasurementCharacteristics.setValue(SpO2_data, 2);
-      SpO2MeasurementCharacteristics.notify();
+        if ( ir < FINGER_ON) {
+          eSpO2 = MINIMUM_SPO2; //indicator for finger detached
+        }
+        if ( digitalRead(SPO2_HRM_SWITCH) == LOW) {
+          SpO2_data[1] = (byte)Ebpm;
+        } else {
+          SpO2_data[1] = (byte)eSpO2;
+        }
+        SpO2_data[2] =  0x00;
+        SpO2MeasurementCharacteristics.setValue(SpO2_data, 2);
+        SpO2MeasurementCharacteristics.notify();
 #endif
-      sumRedRMS = 0.0; sumIrRMS = 0.0; i = 0;//reset mean square at every interval
-      break;
+        sumRedRMS = 0.0; sumIrRMS = 0.0; i = 0;//reset mean square at every interval
+        break;
+      }
+      particleSensor.nextSample(); //We're finished with this sample so move to next sample
+      //Serial.println(SpO2);
     }
-    particleSensor.nextSample(); //We're finished with this sample so move to next sample
-    //Serial.println(SpO2);
+    while (Serial.available()) {
+      choice = Serial.parseInt();
+      while (Serial.available())Serial.read();
+      if (choice == 1) isShutdown = false;
+      if (choice == 2) isShutdown = true;
+      flagShutdown = true;
+    }
   }
 
 }
